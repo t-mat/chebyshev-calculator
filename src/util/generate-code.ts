@@ -3,6 +3,7 @@ import { ChebyshevExpansion } from "./chebyshev-expansion"
 export enum TargetLanguage {
     c = "C",
     go = "Go",
+    glslHlsl = "GLSL/HLSL",
     python = "Python",
     rust = "Rust"
 }  
@@ -10,6 +11,7 @@ export enum TargetLanguage {
 export const targetLanguages: TargetLanguage[] = [
     TargetLanguage.c,
     TargetLanguage.go,
+    TargetLanguage.glslHlsl,
     TargetLanguage.python,
     TargetLanguage.rust
 ]
@@ -126,6 +128,66 @@ const generateGoCode = (expansion: ChebyshevExpansion): string => {
     return lines.join("\n")
 }
 
+const generateGlslHlslCode = (expansion: ChebyshevExpansion): string => {
+    const n = expansion.coeffs.length
+    const fractionDigits = 10;
+
+    let lines : string[] = []
+
+    lines.push(...evalFunctionCommentLines().map((line) => "// " + line))
+    lines.push("float chebyshevEval(float x) {")
+
+    lines.push(...coefficientsCommentLines(expansion).map((line) => "    // " + line))
+    for(let i = 0; i < n; i++) {
+        lines.push("    const float c" + i + " = " + expansion.coeffs[i].toFixed(fractionDigits) + "f;")
+    }
+    lines.push("")
+    lines.push("    const float xMin = " + expansion.xMin.toFixed(fractionDigits) + "f;")
+    lines.push("    const float xMax = " + expansion.xMax.toFixed(fractionDigits) + "f;")
+    lines.push("    const float k    = 1.0f / (xMax - xMin);")
+    lines.push("    const float a    = 4.0f * k;")
+    lines.push("    const float b    = -4.0f * xMin * k - 2.0f;")
+    lines.push("")
+    lines.push("    float xRel2 = a * x + b;")
+    lines.push("")
+    for(let i = n + 1; i > 0; i--) {
+        if(i >= n) {
+            lines.push("    float d_i"+i+" = 0.0f;")
+        } else if(i == n-1) {
+            lines.push("    float d_i"+i+" = c"+i+";  // i = "+i)
+        } else if(i == n-2) {
+            lines.push("    float d_i"+i+" = xRel2 * d_i"+(i+1)+" + c"+i+";  // i = "+i)
+        } else {
+            lines.push("    float d_i"+i+" = xRel2 * d_i"+(i+1)+" + c"+i+" - d_i"+(i+2)+";  // i = "+i)
+        }
+    }
+    lines.push("    return 0.5f * xRel2 * d_i1 - d_i2 + (0.5f * c0);")
+    lines.push("}")
+    lines.push("")
+    lines.push("#if 0")
+    lines.push("// ShaderToy compatible function")
+    lines.push("void mainImage( out vec4 fragColor, in vec2 fragCoord )")
+    lines.push("{")
+    lines.push("    const float xMin = " + expansion.xMin.toFixed(fractionDigits) + "f;")
+    lines.push("    const float xMax = " + expansion.xMax.toFixed(fractionDigits) + "f;")
+    lines.push("")
+    lines.push("    vec2 uv;")
+    lines.push("    uv.x = (fragCoord.x - iResolution.x * 0.5f) / iResolution.y + 0.5f;")
+    lines.push("    uv.y =  fragCoord.y                         / iResolution.y;")
+    lines.push("")
+    lines.push("    vec3 c = vec3(0.8f);")
+    lines.push("    float x = uv.x * (xMax - xMin) + xMin;")
+    lines.push("    if(x >= xMin && x <= xMax) {")
+    lines.push("        float delta = chebyshevEval(x) * 0.5f + 0.5f - fragCoord.y / iResolution.y;")
+    lines.push("        c *= clamp(abs(delta * iResolution.y), 0.0f, 1.0f);")
+    lines.push("    }")
+    lines.push("    fragColor = vec4(c, 1.0);")
+    lines.push("}")
+    lines.push("#endif")
+
+    return lines.join("\n")
+}
+
 const generatePythonCode = (expansion: ChebyshevExpansion): string => {
     const lines: string[] = [
         ...evalFunctionCommentLines().map((line) => "# " + line),
@@ -203,6 +265,9 @@ export const generateCode = (language: TargetLanguage, expansion: ChebyshevExpan
         }
         case TargetLanguage.go: {
             return generateGoCode(expansion)
+        }
+        case TargetLanguage.glslHlsl: {
+            return generateGlslHlslCode(expansion)
         }
     }
 }
