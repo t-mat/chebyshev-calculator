@@ -4,6 +4,7 @@ import basicSsl from '@vitejs/plugin-basic-ssl'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  base: '/chebyshev-calculator/',
   plugins: [
     basicSsl(), // https needed for copying to clipboard on some browsers
     react()
